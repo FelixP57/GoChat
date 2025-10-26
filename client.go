@@ -1,10 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"log"
-	"net/http"
 	"time"
+	"encoding/json"
 
 	"github.com/gorilla/websocket"
 )
@@ -20,66 +19,75 @@ const (
 	pingPeriod = (pongWait * 9) / 10
 
 	// Maximum message size allowed from peer
-	maxMessageSize = 512
+	maxMessageSize = 512 
 )
 
-var (
-	newline	= []byte{'\n'}
-	space	= []byte{' '}
-)
-
-var upgrader = websocket.Upgrader{
-	ReadBufferSize: 1024,
-	WriteBufferSize: 1024,
-}
 
 // Client is a the intermediary between the websocket connection and the hub
 type Client struct {
 	hub *Hub
 
+	room *Room
+
 	// The websocket connection
 	conn *websocket.Conn
 
 	// Buffered channel of outbound message
-	send chan []byte
+	send chan Event
+
+	username string
+
+	online bool
 }
 
-// readPump pumps messages from the websocket connection to the hub
-//
-// The application runs readPump in a per-connection goroutine. The application
-// ensures that there is at most one reader on a connection by executing all
-// reads from this goroutine
-func (c *Client) readPump() {
+func newClient(h *Hub, conn *websocket.Conn, username string) *Client {
+	return &Client{
+		hub: h,
+		conn: conn,
+		username: username,
+		send: make(chan Event),
+	}
+}
+
+// reads messages from the websocket connection to the hub
+// ran in a goroutine for each connection, so that there can only be one read at a time
+func (c *Client) readMessages() {
 	defer func() {
 		c.hub.unregister <- c
-		c.conn.Close()
 	}()
 	c.conn.SetReadLimit(maxMessageSize)
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil})
 	for {
-		_, message, err := c.conn.ReadMessage()
+		_, payload, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("error: %v", err)
 			}
 			break
 		}
-		message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
-		c.hub.broadcast <- message
+
+		// marshal incoming data into Event
+		var request Event
+		if err := json.Unmarshal(payload, &request); err != nil {
+			log.Printf("error marshalling message: %v", err)
+			break
+		}
+
+		// route Event
+		if err := c.hub.routeEvent(request, c); err != nil {
+			log.Println("error handling message: ", err)
+		}
 	}
 }
 
-// writePump pumps messages from the hub to the websocket connection.
-//
-// A goroutine running writePump is started for each connection. The
-// apllication ensures that there is at most one writer to a connection by
-// executing all writes from this goroutine.
-func (c *Client) writePump() {
+// writes messages from the hub to the websocket connection.
+// one writeMessages goroutine is started with each connection to ensure only one write at a time
+func (c *Client) writeMessages() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
-		c.conn.Close()
+		c.hub.unregister <- c
 	}()
 	for {
 		select {
@@ -91,17 +99,33 @@ func (c *Client) writePump() {
 				return
 			}
 
+			data, err := json.Marshal(message)
+			if err != nil {
+				log.Println(err)
+				return
+			}
+
 			w, err := c.conn.NextWriter(websocket.TextMessage)
 			if err != nil {
 				return
 			}
-			w.Write(message)
+			w.Write(data)
 
 			// Add queued chat messages to the current websocket message
 			n := len(c.send)
 			for i := 0; i < n; i++ {
 				w.Write(newline)
-				w.Write(<-c.send)
+				data, err := json.Marshal(message)
+				if err != nil {
+					log.Println(err)
+					return
+				}
+
+				w, err := c.conn.NextWriter(websocket.TextMessage)
+				if err != nil {
+					return
+				}
+				w.Write(data)
 			}
 
 			if err := w.Close(); err != nil {
@@ -116,18 +140,3 @@ func (c *Client) writePump() {
 	}
 }
 
-// serveWs handles websocket requests from the peer.
-func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256)}
-	client.hub.register <- client
-
-	// Allow collection of memory referenced by the caller by doing all work in
-	// new goroutines.
-	go client.writePump()
-	go client.readPump()
-}
