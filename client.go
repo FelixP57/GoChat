@@ -27,24 +27,22 @@ const (
 type Client struct {
 	hub *Hub
 
-	room *Room
-
 	// The websocket connection
 	conn *websocket.Conn
 
 	// Buffered channel of outbound message
 	send chan Event
 
-	username string
+	user *User
 
 	online bool
 }
 
-func newClient(h *Hub, conn *websocket.Conn, username string) *Client {
+func newClient(h *Hub, conn *websocket.Conn, user *User) *Client {
 	return &Client{
 		hub: h,
 		conn: conn,
-		username: username,
+		user: user,
 		send: make(chan Event),
 	}
 }
@@ -107,6 +105,7 @@ func (c *Client) writeMessages() {
 
 			w, err := c.conn.NextWriter(websocket.TextMessage)
 			if err != nil {
+				log.Println(err)
 				return
 			}
 			w.Write(data)

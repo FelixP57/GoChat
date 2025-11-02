@@ -22,6 +22,12 @@ const (
 	EventNewMessage = "new_message"
 	// switch rooms
 	EventChangeRoom = "change_room"
+	// disconenct client
+	EventDisconnectClient = "disconnect"
+	// get room messages
+	EventGetMessages = "get_messages"
+	// get rooms
+	EventGetRooms = "get_rooms"
 )
 
 type SendMessageEvent struct {
@@ -29,10 +35,16 @@ type SendMessageEvent struct {
 	From 	string `json:"from"`
 }
 
-// returned when responding to send_message
+// returned when responding to send_message or get_messages
 type NewMessageEvent struct {
 	SendMessageEvent
 	Sent time.Time `json:"sent"`
+}
+
+// returned when responding to get_rooms
+type NewRoomEvent struct {
+	roomId int `json:"id"`
+	roomName int `json:"name"`
 }
 
 func SendMessageHandler(event Event, c *Client) error {
@@ -45,20 +57,27 @@ func SendMessageHandler(event Event, c *Client) error {
 
 	broadMessage.Sent = time.Now()
 	broadMessage.Message = chatevent.Message
-	broadMessage.From = c.username
+	broadMessage.From = c.user.username
 
 	data, err := json.Marshal(broadMessage)
 	if err != nil {
 		return fmt.Errorf("failed to marshal broadcast message: %v", err)
 	}
 
+	c.hub.db.addMessage(broadMessage, c.user.roomId)
+
 	// place payload in an event
 	var outgoingEvent Event
 	outgoingEvent.Payload = data
 	outgoingEvent.Type = EventNewMessage
 
-	c.room.broadcast <- outgoingEvent
-	
+	room, ok := c.hub.rooms[c.user.roomId]
+	if !ok {
+		fmt.Errorf("error retrieving room by id: %v", err)
+	}
+
+	room.broadcast <- outgoingEvent
+
 	return nil
 }
 
@@ -77,4 +96,31 @@ func ChatRoomHandler(event Event, c *Client) error {
 
 	return nil
 }
+
+func DisconnectClientHandler(event Event, c *Client) error {
+	c.hub.removeClient(c)
+	return nil
+}
+
+func GetMessagesHandler(event Event, c *Client) error {
+	events := c.hub.db.getMessages(c.user.roomId)
+	for i := range events {
+		data, err := json.Marshal(events[i])
+		if err != nil {
+			return fmt.Errorf("failed to marshal broadcast message: %v", err)
+		}
+
+		// place payload in an event
+		var outgoingEvent Event
+		outgoingEvent.Payload = data
+		outgoingEvent.Type = EventNewMessage
+
+		c.send <- outgoingEvent
+	}
+	return nil
+}
+
+//func GetRoomsHandler(event Event, c *Client) error {
+//	rooms := c.hub.db.getRooms(c.user.username)
+//}
 

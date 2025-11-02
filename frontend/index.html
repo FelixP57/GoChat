@@ -34,13 +34,10 @@
 	<h3 id="connection-header">Connected to Websocket: false</h3>
 
 	<!---
-	    Room selection form
+	    Room selection 
 	--->
-	<form id="chatroom-selection">
-	    <label for="chatroom">Chatroom:</label>
-	    <input type="text" id="chatroom" name="chatroom"><br><br>
-	    <input type="submit" value="Change chatroom">
-	</form>
+	<div id="chatroom-selection">
+	</div>
 
 	<br>
 	<!---
@@ -83,7 +80,7 @@
     ---->
     <script type="text/javascript">
 	// default selected chat
-	var selectedChat="general";
+	var selectedRoom=0;
 
 	/*
 	* Event wraps all messages sent and received on the websocket
@@ -118,6 +115,16 @@
 	}
 
 	/*
+	* NewRoomEvent is for user rooms
+	*/
+	class NewRoomEvent {
+	    constructor(id, name) {
+		this.id = id;
+		this.name = name;
+	    }
+	}
+
+	/*
 	* changeChatRoom will update selectedChat and notify the server
 	*/
 	function changeChatRoom() {
@@ -147,6 +154,9 @@
 		    const messageEvent = Object.assign(new NewMessageEvent, event.payload);
 		    appendChatMessage(messageEvent);
 		    break;
+		case "new_room":
+		    const roomEvent = Object.assign(new NewRoomEvent, event.payload);
+		    appendRoomButton(roomEvent);
 		default:
 		    alert("unsupported message type");
 		    break;
@@ -162,19 +172,23 @@
 	    textarea = document.getElementById("chatmessages");
 	    textarea.innerHTML = textarea.innerHTML + "\n" + formattedMsg;
 	    textarea.scollTop = textarea.scrollHeight;
-}
+	}
+
+	/*
+	* appendRoomButton takes in a new room and adds a button to join it
+	*/
+	function appendRoomButton(roomEvent) {
+	    roomDiv = document.getElementById("chatroom-selection")
+	    roomDiv.innerHTML = roomDiv.innerHTML + '<button class="room" id=' + roomEvent.id + ' onclick=changeChatRoom(' + roomEvent.id + ')>' + roomEvent.name + '</button>';
+	}
 
 	/*
 	* changeChatRoom will update the value of selectedchat
 	* and also notify the server that it changes chatroom
 	*/
-	function changeChatRoom() {
+	function changeChatRoom(roomId) {
 	    // change header
-	    var newChat = document.getElementById("chatroom");
-	    if (newChat != null && newChat.value != selectedChat) {
-		console.log(newChat);
-	    }
-	    return false;
+	    selectedRoom = roomId
 	}
 
 	/*
@@ -258,15 +272,21 @@
 	*/
 	function connectWebsocket(token, username) {
 	    if (window["WebSocket"]) {
+		if (conn != null) {
+		    sendEvent("disconnect", {})
+		}
 		conn = new WebSocket("wss://" + document.location.host + "/ws?token=" + token);
 
 		// Onopen
 		conn.onopen = function (evt) {
-		    document.getElementById("connection-header").innerHTML = "Connected to Websocket: true";
+		    document.getElementById("connection-header").innerHTML = "Logged in";
+		    document.getElementById("chatmessages").innerHTML = "";
+		    // sendEvent("get_rooms", {});
+		    sendEvent("get_messages", {});
 		}
 
 		conn.onclose = function (evt) {
-		    document.getElementById("connection-header").innerHTML = "Connected to Websocket: false";
+		    document.getElementById("connection-header").innerHTML = "Please log in";
 		}
 
 		conn.onmessage = function (evt) {
@@ -276,6 +296,7 @@
 		    const event = Object.assign(new Event, eventData);
 		    routeEvent(event);
 		}
+		
 	    } else {
 		alert("Not supporting websockets");
 	    }

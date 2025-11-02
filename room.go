@@ -4,9 +4,16 @@ package main
 type Room struct {
 	hub *Hub
 
+	id int
+
 	capacity int
 
-	// Room clients
+	name string
+
+	// Authorized users
+	users map[*User]bool
+
+	// Connected clients
 	clients map[*Client]bool
 	
 	// Inbound messages from the clients
@@ -22,8 +29,10 @@ type Room struct {
 func newRoom(hub *Hub) *Room {
 	return &Room{
 		hub: hub,
-		capacity: 10,
+		capacity: 2,
+		name: "",
 		broadcast:	make(chan Event),
+		users:		make(map[*User]bool),
 		clients:	make(map[*Client]bool),
 		register:	make(chan *Client),
 		unregister:	make(chan *Client),
@@ -34,23 +43,18 @@ func (r *Room) run() {
 	for {
 		select {
 		case client := <-r.register:
+			r.users[client.user] = true
 			r.clients[client] = true
 		case client := <-r.unregister:
 			if _, ok := r.clients[client]; ok {
 				delete(r.clients, client)
-				if len(r.clients) == 0 {
-					close(r.broadcast)
-					close(r.register)
-					close(r.unregister)
-					return
-				}
 			}
 		case event := <-r.broadcast:
 			for client := range r.clients {
 				select {
 				case client.send <- event:
 				default:
-					r.hub.unregister <- client
+					r.hub.unregister <- client 	
 				}
 			}
 		}
