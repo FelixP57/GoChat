@@ -30,8 +30,8 @@
 <body>
     <div class="center">
 	<h1>GoChat</h1>
-	<h3 id="chat-header">Currently in chat: general</h3>
-	<h3 id="connection-header">Connected to Websocket: false</h3>
+	<h3 id="chat-header">Currently in chat: </h3>
+	<h3 id="connection-header">Please log in</h3>
 
 	<!---
 	    Room selection 
@@ -40,10 +40,20 @@
 	</div>
 
 	<br>
+
+	<!---
+	    Room creation
+	---->
+	<form id="create-chatroom">
+	    <label for="with-username">New room with:</label>
+	    <input type="text" id="with-username" name="with-username"><br><br>
+	    <input type="submit" value="Create room">
+	</form>
+
 	<!---
 	   Textarea for messages
 	---->
-	<textarea class="messagearea" id="chatmessages" readonly name="chatmessages" rows="4", cols="50" placeholder="Welcome to the general chatroom, here messages from others will appear"></textarea>
+	<textarea class="messagearea" id="chatmessages" readonly name="chatmessages" rows="4", cols="50"></textarea>
 
 	<br>
 	<!--
@@ -79,8 +89,8 @@
 	Javascript for websocket and new messages
     ---->
     <script type="text/javascript">
-	// default selected chat
-	var selectedRoom=0;
+	var conn;
+	var selectedRoom;
 
 	/*
 	* Event wraps all messages sent and received on the websocket
@@ -98,8 +108,9 @@
 	* SendMessageEvent sends messages to other clients
 	*/
 	class SendMessageEvent {
-	    constructor(message, from) {
+	    constructor(message, room_id) {
 		this.message = message;
+		this.room_id = room_id;
 	    }
 	}
 
@@ -107,10 +118,11 @@
 	* NewMessageEvent is messages from clients
 	*/
 	class NewMessageEvent {
-	    constructor(message, from, sent) {
+	    constructor(message, from, sent, room_id) {
 		this.message = message;
 		this.from = from;
 		this.sent = sent;
+		this.room_id = room_id;
 	    }
 	}
 
@@ -125,20 +137,12 @@
 	}
 
 	/*
-	* changeChatRoom will update selectedChat and notify the server
+	* CreateRoomEvent is for sending room creation request
 	*/
-	function changeChatRoom() {
-	    var newChat = document.getElementById("chatroom");
-	    if (newChat != null && newChat.value != selectedChat) {
-		selectedChat = newChat.value;
-		header = document.getElementById("chat-header").innerHTML = "Currently in chat: " + selectedChat;
-		
-		let changeEvent = new ChangeChatRoomEvent(selectedChat);
-		sendEvent("change_room", changeEvent);
-		textarea = document.getElementById("chatmessages");
-		textarea.innerHTML = `You changed room into: ${selectedChat}`;
+	class CreateRoomEvent {
+	    constructor(username) {
+		this.username = username
 	    }
-	    return false;
 	}
 
 	/*
@@ -152,11 +156,16 @@
 		case "new_message":
 		    // format payload
 		    const messageEvent = Object.assign(new NewMessageEvent, event.payload);
-		    appendChatMessage(messageEvent);
+		    if (messageEvent.room_id != selectedRoom) {
+			changeChatRoom(messageEvent.room_id);
+		    } else {
+			appendChatMessage(messageEvent);
+		    }
 		    break;
 		case "new_room":
 		    const roomEvent = Object.assign(new NewRoomEvent, event.payload);
 		    appendRoomButton(roomEvent);
+		    break;
 		default:
 		    alert("unsupported message type");
 		    break;
@@ -179,16 +188,20 @@
 	*/
 	function appendRoomButton(roomEvent) {
 	    roomDiv = document.getElementById("chatroom-selection")
-	    roomDiv.innerHTML = roomDiv.innerHTML + '<button class="room" id=' + roomEvent.id + ' onclick=changeChatRoom(' + roomEvent.id + ')>' + roomEvent.name + '</button>';
+	    roomDiv.innerHTML = roomDiv.innerHTML + '<button class="room" id=' + roomEvent.id + ' onclick=changeChatRoom(' + roomEvent.id + ',"' + roomEvent.name + '")>' + roomEvent.name + '</button>';
 	}
 
 	/*
 	* changeChatRoom will update the value of selectedchat
 	* and also notify the server that it changes chatroom
 	*/
-	function changeChatRoom(roomId) {
-	    // change header
-	    selectedRoom = roomId
+	function changeChatRoom(roomId, roomName) {
+	    selectedRoom = roomId;
+	    header = document.getElementById("chat-header");
+	    header.innerHTML = "Currently in chat: " + roomName;
+	    textarea = document.getElementById("chatmessages")
+	    textarea.innerHTML = "";
+	    sendEvent("get_messages", {"room_id": roomId});
 	}
 
 	/*
@@ -196,9 +209,23 @@
 	*/
 	function sendMessage() {
 	    var newMessage = document.getElementById("message");
-	    if (newMessage != null) {
-		let outgoingEvent = new SendMessageEvent(newMessage.value);
+	    if (newMessage != null && selectedRoom != 0) {
+		let outgoingEvent = new SendMessageEvent(newMessage.value, selectedRoom);
 		sendEvent("send_message", outgoingEvent);
+	    } else {
+		console.log("enter a message while in a room");
+	    }
+	    return false;
+	}
+
+	/*
+	* createRoom sends a room creation requests
+	*/
+	function createRoom() {
+	    var username = document.getElementById("with-username");
+	    if (username != null) {
+		let outgoingEvent = new CreateRoomEvent(username.value);
+		sendEvent("create_room", outgoingEvent);
 	    }
 	    return false;
 	}
@@ -281,8 +308,8 @@
 		conn.onopen = function (evt) {
 		    document.getElementById("connection-header").innerHTML = "Logged in";
 		    document.getElementById("chatmessages").innerHTML = "";
-		    // sendEvent("get_rooms", {});
-		    sendEvent("get_messages", {});
+		    document.getElementById("chatroom-selection").innerHTML = "";
+		    sendEvent("get_rooms", {});
 		}
 
 		conn.onclose = function (evt) {
@@ -305,12 +332,13 @@
 	// once the website loads
 	window.onload = function () {
 	    // apply the listeners to the submit events to avoid redirects
-	    document.getElementById("chatroom-selection").onsubmit = changeChatRoom;
+	    document.getElementById("create-chatroom").onsubmit = createRoom;
 	    document.getElementById("chatroom-message").onsubmit = sendMessage;
 	    document.getElementById("login-form").onsubmit = login;
 	    document.getElementById("signup-form").onsubmit = signup;
 
 	    conn = null;
+	    selectedRoom = 0;
 	};
     </script>
 </body>

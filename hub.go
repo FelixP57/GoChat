@@ -44,14 +44,11 @@ func checkOrigin(r *http.Request) bool {
 
 // Hub maintains the set of active clients and broadcasts messages to the clients
 type Hub struct {
-	// Non full rooms
-	roomsWaiting []int
-
 	// all rooms
 	rooms map[int]*Room
 
-	// Registered clients and their associated user
-	clients map[*Client]*User
+	// Registered clients and their associated user's username
+	clients map[string]map[*Client]bool
 
 	// Register requests from the clients
 	register chan *Client
@@ -67,7 +64,7 @@ type Hub struct {
 
 func newHub(ctx context.Context) *Hub {
 	h := &Hub{
-		clients: 	make(map[*Client]*User),
+		clients: 	make(map[string]map[*Client]bool),
 		rooms:		make(map[int]*Room),
 		register:	make(chan *Client),
 		unregister:	make(chan *Client),
@@ -81,7 +78,7 @@ func newHub(ctx context.Context) *Hub {
 }
 
 func (h *Hub) loadRooms() {
-	rooms, err := h.db.getRooms()
+	rooms, err := h.db.getRoomObjects()
 	if err != nil {
 		log.Println(err)
 	}
@@ -94,9 +91,10 @@ func (h *Hub) loadRooms() {
 // configures and adds all handlers
 func (h *Hub) setupEventHandlers() {
 	h.handlers[EventSendMessage] = SendMessageHandler
-	h.handlers[EventChangeRoom] = ChatRoomHandler
 	h.handlers[EventDisconnectClient] = DisconnectClientHandler
 	h.handlers[EventGetMessages] = GetMessagesHandler
+	h.handlers[EventGetRooms] = GetRoomsHandler
+	h.handlers[EventCreateRoom] = CreateRoomHandler
 }
 
 // makes sure the events are handlers are correctly associated
@@ -245,18 +243,17 @@ func (h *Hub) serveWs(w http.ResponseWriter, r *http.Request) {
 
 // add client to the clients list
 func (h *Hub) addClient(client *Client) {
-	h.clients[client] = client.user
+	if _, ok := h.clients[client.user.username]; !ok {
+		h.clients[client.user.username] = make(map[*Client]bool)
+	}
+	h.clients[client.user.username][client] = true
 }
 
 // remove client from clients list and end connection
 func (h *Hub) removeClient(client *Client) {
-	if _, ok := h.clients[client]; ok {
-		room, ok := h.rooms[client.user.roomId]
-		if ok {
-			room.unregister <- client
-		}
+	if _, ok := h.clients[client.user.username][client]; ok {
 		client.conn.Close()
-		delete(h.clients, client)
+		delete(h.clients[client.user.username], client)
 	}
 }
 
@@ -266,38 +263,6 @@ func (h *Hub) run() {
 		select {
 		case client := <-h.register:
 			h.addClient(client)
-			if client.user.roomId != 0 {
-				room := h.rooms[client.user.roomId]
-				room.register <- client
-				continue
-			}
-			if len(h.roomsWaiting) > 0 {
-				roomId := h.roomsWaiting[0]
-				room, ok := h.rooms[roomId]
-				if !ok {
-					log.Println("Unknown room")
-				}
-				if room.capacity == len(room.users) + 1 {
-					h.roomsWaiting = h.roomsWaiting[1:]
-				}
-				client.user.roomId = roomId
-				h.db.addUserToRoom(client.user.username, roomId)
-				h.db.updateUserRoom(client.user, roomId)
-				room.register <- client
-
-			} else {
-				room := newRoom(h)
-				roomId := h.db.addRoom(room)
-				h.rooms[roomId] = room
-				go room.run()
-				if room.capacity > 1 {
-					h.roomsWaiting = append(h.roomsWaiting, roomId)
-				}
-				client.user.roomId = roomId
-				h.db.addUserToRoom(client.user.username, roomId)
-				h.db.updateUserRoom(client.user, roomId)
-				room.register <- client
-			}
 		case client := <-h.unregister:
 			h.removeClient(client)
 		}

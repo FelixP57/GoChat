@@ -65,10 +65,10 @@ func (c *Client) readMessages() {
 			break
 		}
 
-		// marshal incoming data into Event
+		// unmarshal incoming data into Event
 		var request Event
 		if err := json.Unmarshal(payload, &request); err != nil {
-			log.Printf("error marshalling message: %v", err)
+			log.Printf("error unmarshalling message: %v", err)
 			break
 		}
 

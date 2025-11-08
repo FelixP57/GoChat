@@ -10,20 +10,17 @@ type Room struct {
 
 	name string
 
-	// Authorized users
-	users map[*User]bool
+	// Authorized users' username
+	users map[string]bool
 
-	// Connected clients
-	clients map[*Client]bool
-	
 	// Inbound messages from the clients
 	broadcast chan Event
 
 	// Register requests from the clients
-	register chan *Client
+	register chan *User
 
 	// Unregister requests from clients
-	unregister chan *Client
+	unregister chan *User
 }
 
 func newRoom(hub *Hub) *Room {
@@ -32,29 +29,29 @@ func newRoom(hub *Hub) *Room {
 		capacity: 2,
 		name: "",
 		broadcast:	make(chan Event),
-		users:		make(map[*User]bool),
-		clients:	make(map[*Client]bool),
-		register:	make(chan *Client),
-		unregister:	make(chan *Client),
+		users:		make(map[string]bool),
+		register:	make(chan *User),
+		unregister:	make(chan *User),
 	}
 }
 
 func (r *Room) run() {
 	for {
 		select {
-		case client := <-r.register:
-			r.users[client.user] = true
-			r.clients[client] = true
-		case client := <-r.unregister:
-			if _, ok := r.clients[client]; ok {
-				delete(r.clients, client)
+		case user := <-r.register:
+			r.users[user.username] = true
+		case user := <-r.unregister:
+			if _, ok := r.users[user.username]; ok {
+				delete(r.users, user.username)
 			}
 		case event := <-r.broadcast:
-			for client := range r.clients {
-				select {
-				case client.send <- event:
-				default:
-					r.hub.unregister <- client 	
+			for user := range r.users {
+				for client := range r.hub.clients[user] {
+					select {
+					case client.send <- event:
+					default:
+						r.hub.unregister <- client 	
+					}
 				}
 			}
 		}

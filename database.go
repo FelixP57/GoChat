@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"os"
 	"fmt"
 
@@ -13,6 +14,10 @@ const (
 	port = 5432
 	user = "postgres"
 	dbname = "gochat_db"
+)
+
+var (
+	RoomNotFoundError = errors.New("Room not found")
 )
 
 type Database struct {
@@ -40,8 +45,8 @@ func getDb(hub *Hub) *Database {
 }
 
 func (db *Database) addUser(user *User) {
-	sqlStatement := `INSERT INTO users (username, password, room_id) VALUES ($1, $2, $3);`
-	_, err := db.db.Exec(sqlStatement, user.username, user.password, user.roomId)
+	sqlStatement := `INSERT INTO users (username, password) VALUES ($1, $2);`
+	_, err := db.db.Exec(sqlStatement, user.username, user.password)
 	if err != nil {
 		panic(err)
 	}
@@ -49,14 +54,16 @@ func (db *Database) addUser(user *User) {
 
 func (db *Database) getUserByUsername(username string) (*User, error) {
 	sqlStatement := `SELECT * FROM users WHERE username=$1;`
-	var user User
+	var name string
+	var password string
 	row := db.db.QueryRow(sqlStatement, username)
-	err := row.Scan(&user.username, &user.password, &user.roomId)
+	err := row.Scan(&name, &password)
+	user := newUser(name, password)
 	switch err {
 	case sql.ErrNoRows:
 		return nil, err
 	case nil:
-		return &user, nil
+		return user, nil
 	default:
 		panic(err)
 	}
@@ -81,7 +88,7 @@ func (db *Database) addRoom(room *Room) int {
 	return id
 }
 
-func (db *Database) getRooms() (map[int]*Room, error) {
+func (db *Database) getRoomObjects() (map[int]*Room, error) {
 	sqlStatement := `SELECT id, capacity, name FROM rooms;`
 	rooms := make(map[int]*Room)
 	rows, err := db.db.Query(sqlStatement)
@@ -100,6 +107,25 @@ func (db *Database) getRooms() (map[int]*Room, error) {
 		rooms[id] = room
 	}
 	return rooms, nil
+}
+
+func (db *Database) getRooms(username string) []NewRoomEvent {
+	sqlStatement := `SELECT rooms.id, rooms.name FROM rooms, room_users WHERE rooms.id=room_users.room_id AND room_users.username=$1;`
+	var rooms []NewRoomEvent
+	rows, err := db.db.Query(sqlStatement, username)
+	if err != nil {
+		panic(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var event NewRoomEvent
+		err = rows.Scan(&event.Id, &event.Name)
+		if err != nil {
+			panic(err)
+		}
+		rooms = append(rooms, event)
+	}
+	return rooms
 }
 
 func (db *Database) updateRoomName(roomId int, name string) {
@@ -128,8 +154,7 @@ func (db *Database) getMessages(roomId int) []NewMessageEvent {
 	defer rows.Close()
 	for rows.Next() {
 		var event NewMessageEvent
-		var id int
-		err = rows.Scan(&event.Message, &event.From, &event.Sent, &id)
+		err = rows.Scan(&event.Message, &event.From, &event.Sent, &event.RoomId)
 		if err != nil {
 			panic(err)
 		}
@@ -138,9 +163,9 @@ func (db *Database) getMessages(roomId int) []NewMessageEvent {
 	return events
 }
 
-func (db *Database) getRoomUsers(roomId int) map[*User]bool {
+func (db *Database) getRoomUsers(roomId int) map[string]bool {
 	sqlStatement := `SELECT username FROM room_users WHERE room_id=$1;`
-	users := make(map[*User]bool) 
+	users := make(map[string]bool) 
 	rows, err := db.db.Query(sqlStatement, roomId)
 	if err != nil {
 		panic(err)
@@ -148,16 +173,11 @@ func (db *Database) getRoomUsers(roomId int) map[*User]bool {
 	defer rows.Close()
 	for rows.Next() {
 		var username string
-		var user *User
 		err = rows.Scan(&username)
 		if err != nil {
 			panic(err)
 		}
-		user, err = db.getUserByUsername(username)
-		if err != nil {
-			panic(err)
-		}
-		users[user] = true
+		users[username] = true
 	}
 	return users
 }
@@ -168,5 +188,19 @@ func (db *Database) addUserToRoom(username string, roomId int) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func (db *Database) getRoomByUsers(username1 string, username2 string) (int, error) {
+	sqlStatement := `SELECT r.id FROM rooms r, room_users u1, room_users u2 WHERE r.capacity=2 AND r.id=u1.room_id AND r.id=u2.room_id AND u1.username=$1 AND u2.username=$2;`
+	row := db.db.QueryRow(sqlStatement, username1, username2)
+	var id int
+	err := row.Scan(&id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0, RoomNotFoundError
+		}
+		return 0, err
+	}
+	return id, nil
 }
 

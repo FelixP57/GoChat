@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"errors"
 	"time"
 	"encoding/json"
 )
@@ -20,19 +21,22 @@ const (
 	EventSendMessage = "send_message"
 	// response to send_message
 	EventNewMessage = "new_message"
-	// switch rooms
-	EventChangeRoom = "change_room"
 	// disconenct client
 	EventDisconnectClient = "disconnect"
 	// get room messages
 	EventGetMessages = "get_messages"
 	// get rooms
 	EventGetRooms = "get_rooms"
+	// new room
+	EventNewRoom = "new_room"
+	// create room
+	EventCreateRoom = "create_room"
 )
 
 type SendMessageEvent struct {
 	Message string `json:"message"`
 	From 	string `json:"from"`
+	RoomId  int    `json:"room_id"`
 }
 
 // returned when responding to send_message or get_messages
@@ -43,8 +47,16 @@ type NewMessageEvent struct {
 
 // returned when responding to get_rooms
 type NewRoomEvent struct {
-	roomId int `json:"id"`
-	roomName int `json:"name"`
+	Id int `json:"id"`
+	Name string `json:"name"`
+}
+
+type CreateRoomEvent struct {
+	Username string `json:"username"`
+}
+
+type GetMessagesEvent struct {
+	RoomId int `json:"room_id"`
 }
 
 func SendMessageHandler(event Event, c *Client) error {
@@ -58,41 +70,26 @@ func SendMessageHandler(event Event, c *Client) error {
 	broadMessage.Sent = time.Now()
 	broadMessage.Message = chatevent.Message
 	broadMessage.From = c.user.username
+	broadMessage.RoomId = chatevent.RoomId
 
 	data, err := json.Marshal(broadMessage)
 	if err != nil {
 		return fmt.Errorf("failed to marshal broadcast message: %v", err)
 	}
 
-	c.hub.db.addMessage(broadMessage, c.user.roomId)
+	c.hub.db.addMessage(broadMessage, chatevent.RoomId)
 
 	// place payload in an event
 	var outgoingEvent Event
 	outgoingEvent.Payload = data
 	outgoingEvent.Type = EventNewMessage
 
-	room, ok := c.hub.rooms[c.user.roomId]
+	room, ok := c.hub.rooms[broadMessage.RoomId]
 	if !ok {
 		fmt.Errorf("error retrieving room by id: %v", err)
 	}
 
 	room.broadcast <- outgoingEvent
-
-	return nil
-}
-
-type ChangeRoomEvent struct {
-	Name string `json:"name"`
-}
-
-// handles switching of chatrooms
-func ChatRoomHandler(event Event, c *Client) error {
-	var changeRoomEvent ChangeRoomEvent;
-	if err := json.Unmarshal(event.Payload, &changeRoomEvent); err != nil {
-		return fmt.Errorf("bad payload in request: %v", err)
-	}
-
-	// c.chatroom = changeRoomEvent.Name
 
 	return nil
 }
@@ -103,7 +100,11 @@ func DisconnectClientHandler(event Event, c *Client) error {
 }
 
 func GetMessagesHandler(event Event, c *Client) error {
-	events := c.hub.db.getMessages(c.user.roomId)
+	var e GetMessagesEvent;
+	if err := json.Unmarshal(event.Payload, &e); err != nil {
+		return fmt.Errorf("bad payload in request: %v", err)
+	}
+	events := c.hub.db.getMessages(e.RoomId)
 	for i := range events {
 		data, err := json.Marshal(events[i])
 		if err != nil {
@@ -120,7 +121,75 @@ func GetMessagesHandler(event Event, c *Client) error {
 	return nil
 }
 
-//func GetRoomsHandler(event Event, c *Client) error {
-//	rooms := c.hub.db.getRooms(c.user.username)
-//}
+func GetRoomsHandler(event Event, c *Client) error {
+	rooms := c.hub.db.getRooms(c.user.username)
+	for i := range rooms {
+		if rooms[i].Name == "" {
+			users := c.hub.db.getRoomUsers(rooms[i].Id)
+			for username := range users {
+				rooms[i].Name += username
+			}
+		}
+		data, err := json.Marshal(rooms[i])
+		if err != nil {
+			return fmt.Errorf("failed to marshal broadcast message: %v", err)
+		}
+
+		var outgoingEvent Event
+		outgoingEvent.Payload = data
+		outgoingEvent.Type = EventNewRoom
+
+		c.send <- outgoingEvent
+	}
+	return nil
+}
+
+func CreateRoomHandler(event Event, c *Client) error {
+	var createRoom CreateRoomEvent
+	if err := json.Unmarshal(event.Payload, &createRoom); err != nil {
+		fmt.Errorf("Error unmarshalling event: %v", err)
+	}
+	// check if other user exists
+	user, err := c.hub.db.getUserByUsername(createRoom.Username)
+	if err != nil {
+		fmt.Errorf("user not found: %v", err)
+	}
+	
+	// check if room already exists
+	var roomEvent NewRoomEvent
+	var room *Room
+	id, err := c.hub.db.getRoomByUsers(c.user.username, user.username)
+	if err != nil {
+		if !errors.Is(err, RoomNotFoundError) {
+			return err
+		}
+		// create room
+		room = newRoom(c.hub)
+		go room.run()
+		id := c.hub.db.addRoom(room)
+		
+		room.register <- c.user
+		room.register <- user
+		c.hub.db.addUserToRoom(c.user.username, id)
+		c.hub.db.addUserToRoom(user.username, id)
+		c.hub.rooms[id] = room
+		roomEvent = NewRoomEvent{Id: id, Name: c.user.username + user.username}
+	} else {
+		room = c.hub.rooms[id]
+		roomEvent = NewRoomEvent{Id: id, Name: room.name}
+	}	
+
+	// broadcast NewRoomEvent
+	data, err := json.Marshal(roomEvent)
+	if err != nil {
+		return fmt.Errorf("failed to marshal broadcast message: %v", err)
+	}
+
+	var outgoingEvent Event
+	outgoingEvent.Payload = data
+	outgoingEvent.Type = EventNewRoom
+	room.broadcast <- outgoingEvent
+
+	return nil
+}
 
