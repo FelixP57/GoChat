@@ -127,8 +127,12 @@ func GetRoomsHandler(event Event, c *Client) error {
 		if rooms[i].Name == "" {
 			users := c.hub.db.getRoomUsers(rooms[i].Id)
 			for username := range users {
-				rooms[i].Name += username
+				if (username != c.user.username) {
+					rooms[i].Name += username
+					rooms[i].Name += ", ";
+				}
 			}
+			rooms[i].Name = rooms[i].Name[:len(rooms[i].Name) - 2];
 		}
 		data, err := json.Marshal(rooms[i])
 		if err != nil {
@@ -173,10 +177,10 @@ func CreateRoomHandler(event Event, c *Client) error {
 		c.hub.db.addUserToRoom(c.user.username, id)
 		c.hub.db.addUserToRoom(user.username, id)
 		c.hub.rooms[id] = room
-		roomEvent = NewRoomEvent{Id: id, Name: c.user.username + user.username}
+		roomEvent = NewRoomEvent{Id: id, Name: user.username}
 	} else {
 		room = c.hub.rooms[id]
-		roomEvent = NewRoomEvent{Id: id, Name: room.name}
+		roomEvent = NewRoomEvent{Id: id, Name: user.username}
 	}	
 
 	// broadcast NewRoomEvent

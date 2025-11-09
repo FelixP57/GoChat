@@ -24,6 +24,7 @@ func serveHome(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.ServeFile(w, r, "./frontend/index.html")
+
 }
 
 func main() {
@@ -57,6 +58,7 @@ func setupAPI(ctx context.Context) {
 	go hub.run()
 
 	// serve the ./frontend dir at route /
+	fs := http.FileServer(http.Dir("./frontend/"))
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		serveHome(hub, w, r)
 	})
@@ -68,5 +70,7 @@ func setupAPI(ctx context.Context) {
 	http.HandleFunc("/debug", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, len(hub.clients))
 	})
+	http.Handle("/frontend/", http.StripPrefix("/frontend", fs))
+
 }
 
