@@ -1,0 +1,22 @@
+.App {
+  --header-height: 50px;
+  text-align: center;
+}
+
+#sidebar {
+    --profile-height: 10%;
+    --room-creation-form-height: 30%;
+    --max-room-list-height: 60%;
+
+    height: 100%;
+    width: 200px;
+    position: fixed;
+    z-index: 1;
+    top: var(--header-height);
+    left: 0;
+    background-color: #555;
+    padding-top: 20px;
+    color: #EEE;
+    text-align: center;
+}
+

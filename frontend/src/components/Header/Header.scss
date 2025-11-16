@@ -1,0 +1,15 @@
+.header {
+  position: fixed;
+  background-color: #15223b;
+  width: 100%;
+  top: 0;
+  margin: 0;
+  padding: 10px;
+  color: white;
+  height: calc(var(--header-height) - 20px);
+
+  h2 {
+    margin: 0;
+    padding: 0;
+  }
+}

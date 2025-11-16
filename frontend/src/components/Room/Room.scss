@@ -1,0 +1,36 @@
+.room {
+    width: 80%;
+    margin: auto;
+    padding: 5px 10px 5px 10px;
+    background-color: #555;
+    border: none;
+    border-top: 2px solid #CCC;
+    color: #EEE;
+    cursor: pointer;
+    text-align: left;
+}
+
+.room:hover {
+    background-color: #999;
+}
+
+.room.selected {
+    background-color: #777;
+}
+
+.last-message {
+    margin: 0;
+    padding: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.last-message > p {
+  display: inline;
+}
+
+.room-name {
+  margin: 0;
+  padding: 0;
+}

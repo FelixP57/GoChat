@@ -10,6 +10,8 @@ type Room struct {
 
 	name string
 
+	lastMessage NewMessageEvent
+
 	// Authorized users' username
 	users map[string]bool
 

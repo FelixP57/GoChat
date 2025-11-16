@@ -49,6 +49,7 @@ type NewMessageEvent struct {
 type NewRoomEvent struct {
 	Id int `json:"id"`
 	Name string `json:"name"`
+	LastMessage NewMessageEvent `json:"last_message"`
 }
 
 type CreateRoomEvent struct {
@@ -60,13 +61,15 @@ type GetMessagesEvent struct {
 }
 
 func SendMessageHandler(event Event, c *Client) error {
-	var chatevent SendMessageEvent;
+	var chatevent SendMessageEvent
 	if err := json.Unmarshal(event.Payload, &chatevent); err != nil {
 		return fmt.Errorf("bad payload in request: %v", err)
 	}
 
 	var broadMessage NewMessageEvent
 
+	fmt.Println(chatevent.Message)
+	fmt.Println(chatevent.RoomId)
 	broadMessage.Sent = time.Now()
 	broadMessage.Message = chatevent.Message
 	broadMessage.From = c.user.username
@@ -89,6 +92,7 @@ func SendMessageHandler(event Event, c *Client) error {
 		fmt.Errorf("error retrieving room by id: %v", err)
 	}
 
+	room.lastMessage = broadMessage
 	room.broadcast <- outgoingEvent
 
 	return nil
@@ -122,19 +126,23 @@ func GetMessagesHandler(event Event, c *Client) error {
 }
 
 func GetRoomsHandler(event Event, c *Client) error {
-	rooms := c.hub.db.getRooms(c.user.username)
-	for i := range rooms {
-		if rooms[i].Name == "" {
-			users := c.hub.db.getRoomUsers(rooms[i].Id)
+	roomIds := c.hub.db.getRooms(c.user.username)
+	for i := range roomIds {
+		room := c.hub.rooms[roomIds[i]]
+		roomName := room.name
+		if roomName == "" {
+			users := c.hub.rooms[roomIds[i]].users
 			for username := range users {
 				if (username != c.user.username) {
-					rooms[i].Name += username
-					rooms[i].Name += ", ";
+					roomName += username
+					roomName += ", ";
 				}
 			}
-			rooms[i].Name = rooms[i].Name[:len(rooms[i].Name) - 2];
+			roomName = roomName[:len(roomName) - 2];
 		}
-		data, err := json.Marshal(rooms[i])
+		lastMessage := c.hub.db.getLastRoomMessage(roomIds[i])
+		event := NewRoomEvent{Id: roomIds[i], Name: roomName, LastMessage: lastMessage}
+		data, err := json.Marshal(event)
 		if err != nil {
 			return fmt.Errorf("failed to marshal broadcast message: %v", err)
 		}
@@ -177,10 +185,10 @@ func CreateRoomHandler(event Event, c *Client) error {
 		c.hub.db.addUserToRoom(c.user.username, id)
 		c.hub.db.addUserToRoom(user.username, id)
 		c.hub.rooms[id] = room
-		roomEvent = NewRoomEvent{Id: id, Name: user.username}
+		roomEvent = NewRoomEvent{Id: id, Name: user.username, LastMessage: NewMessageEvent{}}
 	} else {
 		room = c.hub.rooms[id]
-		roomEvent = NewRoomEvent{Id: id, Name: user.username}
+		roomEvent = NewRoomEvent{Id: id, Name: user.username, LastMessage: room.lastMessage}
 	}	
 
 	// broadcast NewRoomEvent

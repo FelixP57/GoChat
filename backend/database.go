@@ -109,23 +109,23 @@ func (db *Database) getRoomObjects() (map[int]*Room, error) {
 	return rooms, nil
 }
 
-func (db *Database) getRooms(username string) []NewRoomEvent {
-	sqlStatement := `SELECT rooms.id, rooms.name FROM rooms, room_users WHERE rooms.id=room_users.room_id AND room_users.username=$1;`
-	var rooms []NewRoomEvent
+func (db *Database) getRooms(username string) []int {
+	sqlStatement := `SELECT rooms.id FROM rooms, room_users WHERE rooms.id=room_users.room_id AND room_users.username=$1;`
+	var roomIds []int
 	rows, err := db.db.Query(sqlStatement, username)
 	if err != nil {
 		panic(err)
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var event NewRoomEvent
-		err = rows.Scan(&event.Id, &event.Name)
+		var id int
+		err = rows.Scan(&id)
 		if err != nil {
 			panic(err)
 		}
-		rooms = append(rooms, event)
+		roomIds = append(roomIds, id)
 	}
-	return rooms
+	return roomIds
 }
 
 func (db *Database) updateRoomName(roomId int, name string) {
@@ -202,5 +202,16 @@ func (db *Database) getRoomByUsers(username1 string, username2 string) (int, err
 		return 0, err
 	}
 	return id, nil
+}
+
+func (db *Database) getLastRoomMessage(roomId int) NewMessageEvent {
+	sqlStatement := `SELECT * FROM messages WHERE room_id=$1 ORDER BY date_sent DESC LIMIT 1;`
+	row := db.db.QueryRow(sqlStatement, roomId)
+	var message NewMessageEvent
+	err := row.Scan(&message.Message, &message.From, &message.Sent, &message.RoomId)
+	if err != nil {
+		return NewMessageEvent{}
+	}
+	return message
 }
 

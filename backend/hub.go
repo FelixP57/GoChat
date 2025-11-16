@@ -37,6 +37,8 @@ func checkOrigin(r *http.Request) bool {
 	switch origin {
 	case "https://localhost:8080":
 		return true
+	case "https://localhost:5173":
+		return true
 	default:
 		return false
 	}
@@ -216,6 +218,7 @@ func (h *Hub) serveWs(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
+
 	username, err := claims.GetSubject()
 	if err != nil {
 		log.Println(err)
@@ -228,12 +231,14 @@ func (h *Hub) serveWs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	
 	user, err := h.db.getUserByUsername(username)
 	if err != nil  {
 		log.Println(err)
 	}
 	client := newClient(h, conn, user)
 	h.register <- client
+	
 
 	// allow collection of memory referenced by the caller by doing all work in
 	// new goroutines.
