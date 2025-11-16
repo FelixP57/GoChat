@@ -1,0 +1,8 @@
+.git
+
+gencert.bash
+*.crt
+*.key
+*.env
+*.pem
+*.env.*
