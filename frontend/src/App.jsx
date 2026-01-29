@@ -8,6 +8,8 @@ import {
     NewMessageEvent, 
     NewRoomEvent, 
     CreateRoomEvent,
+    UserConnectedEvent,
+    UserDisconnectedEvent,
 } from "./api";
 
 import Header from './components/Header/Header';
@@ -33,6 +35,8 @@ class App extends Component {
 	this.changeChatRoom = this.changeChatRoom.bind(this);
 	this.sendMessage = this.sendMessage.bind(this);
 	this.setLastRoomMessage = this.setLastRoomMessage.bind(this);
+	this.setOnline = this.setOnline.bind(this);
+	this.setOffline = this.setOffline.bind(this);
 	this.disconnect = this.disconnect.bind(this);
     }
 
@@ -55,14 +59,52 @@ class App extends Component {
 		break;
 	    case "new_room":
 		const roomEvent = Object.assign(new NewRoomEvent, event.payload);
-		this.setState(prevState => ({
-		    rooms: this.addRoom(roomEvent, prevState.rooms)
-		}));
+		
+		this.setState(prevState => ({rooms: this.addRoom(roomEvent, prevState.rooms)}));
 		break;
+	    case "user_connected":
+		const userConnectedEvent = Object.assign(new UserConnectedEvent, event.payload);
+		if (userConnectedEvent.username != this.state.username) {
+		    this.setState(prevState => ({
+			rooms: this.setOnline(userConnectedEvent.username, prevState.rooms)
+		    }));
+		}
+		break;
+	    case "user_disconnected":
+		const userDisconnectedEvent = Object.assign(new UserDisconnectedEvent, event.payload);
+		if (userDisconnectedEvent.username != this.state.username) {
+		    this.setState(prevState => ({
+			rooms: this.setOffline(userDisconnectedEvent.username, prevState.rooms)
+		    }));
+		}
+		break;
+
 	    default:
 		alert("unsupported message type");
 		break;
 	    }
+    }
+
+    setOnline(username, rooms) {
+	rooms.forEach((room) => {
+	    room.users.forEach((user, index) => {
+		if (user.username == username) {
+		    user.online = true;
+		}
+	    })
+	});
+	return rooms;
+    }
+
+    setOffline(username, rooms) {
+	rooms.forEach((room) => {
+	    room.users.forEach((user, index) => {
+		if (user.username == username) {
+		    user.online = false;
+		}
+	    })
+	});
+	return rooms;
     }
 
     setLastRoomMessage(roomId, message) {
@@ -77,16 +119,19 @@ class App extends Component {
     }
 
     changeChatRoom(roomId) {
-	this.setState({
-	    selectedRoom: this.state.rooms.get(roomId),
-	    messages: [],
-	});
-	sendEvent("get_messages", {"room_id": roomId});
+	if (!this.state.selectedRoom || roomId != this.state.selectedRoom.id) { 
+	    this.setState({
+		selectedRoom: this.state.rooms.get(roomId),
+		messages: [],
+	    });
+	    sendEvent("get_messages", {"room_id": roomId});
+	}
 	return false;
     }
 
     sendMessage(message) {
-	let outgoingEvent = new SendMessageEvent(message, parseInt(this.state.selectedRoom.id));
+	let roomId = parseInt(this.state.selectedRoom.id);
+	let outgoingEvent = new SendMessageEvent(message, roomId);
 	sendEvent("send_message", outgoingEvent);
 	return false;
     }
@@ -182,7 +227,7 @@ class App extends Component {
 		    {this.state.username && this.state.selectedRoom &&
 		    <Messages 
 			messages={this.state.messages} 
-			roomName={this.state.selectedRoom.name} 
+			room={this.state.selectedRoom} 
 			sendMessage={this.sendMessage}
 		    />
 		    }

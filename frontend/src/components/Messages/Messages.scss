@@ -1,4 +1,23 @@
 #messages {
-   padding-bottom: 20px;
+  padding-bottom: 20px;
+  width: 60%;
 }
 
+.messagearea {
+  padding: 5px;
+  background-color: #EEE;
+  height: 60vh;
+  overflow-y: scroll;
+  text-overflow: hidden;
+}
+
+ .message {
+  text-wrap: wrap;
+  white-space: wrap;
+  word-wrap: break-word;
+ }
+
+.date-separator {
+  text-align: center;
+  color: #333;
+}

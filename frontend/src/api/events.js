@@ -6,6 +6,14 @@ export class Event {
     }
 }
 
+export class RoomUser {
+    constructor(username, online, typing) {
+	this.username = username;
+	this.online = online;
+	this.typing = typing;
+    }
+}
+
 export class SendMessageEvent {
     constructor(message, room_id) {
 	this.message = message;
@@ -23,9 +31,10 @@ export class NewMessageEvent {
 }
 
 export class NewRoomEvent {
-    constructor(id, name, last_message) {
+    constructor(id, name, last_message, users) {
 	this.id = id;
 	this.name = name;
+	this.users = users
 	this.last_message = last_message;
     }
 }
@@ -36,3 +45,14 @@ export class CreateRoomEvent {
     }
 }
 
+export class UserConnectedEvent {
+    constructor(username) {
+	this.username = username
+    }
+}
+
+export class UserDisconnectedEvent {
+    constructor(username) {
+	this.username = username
+    }
+}

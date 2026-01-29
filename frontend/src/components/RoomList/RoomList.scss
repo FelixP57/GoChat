@@ -1,4 +1,4 @@
 #room-list {
     max-height: var(--max-room-list-height);
-    overflow: scroll;
+    overflow-y: auto;
 }

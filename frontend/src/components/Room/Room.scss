@@ -18,16 +18,36 @@
     background-color: #777;
 }
 
+.room-name {
+  font-weight: bold;
+  margin: 0;
+  padding: 0;
+}
+
 .last-message {
     margin: 0;
     padding: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: space-between;
 }
 
 .last-message > p {
   display: inline;
+}
+
+.last-message-message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: auto;
+}
+
+.last-message-date {
+  min-width: 30%;
+  text-align: right;
 }
 
 .room-name {

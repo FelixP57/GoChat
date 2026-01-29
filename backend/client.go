@@ -43,7 +43,7 @@ func newClient(h *Hub, conn *websocket.Conn, user *User) *Client {
 		hub: h,
 		conn: conn,
 		user: user,
-		send: make(chan Event),
+		send: make(chan Event, maxMessageSize),
 	}
 }
 
@@ -92,6 +92,7 @@ func (c *Client) writeMessages() {
 		case message, ok := <-c.send:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
+				log.Println("hub closed channel");
 				// The hub closed the channel
 				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
@@ -110,26 +111,38 @@ func (c *Client) writeMessages() {
 			}
 			w.Write(data)
 
+			if err := w.Close(); err != nil {
+				log.Println(err)
+				return
+			}
+
 			// Add queued chat messages to the current websocket message
 			n := len(c.send)
 			for i := 0; i < n; i++ {
 				w.Write(newline)
+				
+				message = <-c.send
+
 				data, err := json.Marshal(message)
+				w, err := c.conn.NextWriter(websocket.TextMessage)
 				if err != nil {
 					log.Println(err)
 					return
 				}
 
-				w, err := c.conn.NextWriter(websocket.TextMessage)
 				if err != nil {
+					log.Println(err)
 					return
 				}
+
 				w.Write(data)
+
+				if err := w.Close(); err != nil {
+					log.Println(err)
+					return
+				}
 			}
 
-			if err := w.Close(); err != nil {
-				return
-			}
 		case <-ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {

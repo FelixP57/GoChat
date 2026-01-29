@@ -4,31 +4,55 @@ import './Messages.scss';
 class Messages extends Component {
     constructor(props) {
 	super(props);
-	this.state = {
-	    message: '',
-	};
+	this.getOnlineUsers = this.getOnlineUsers.bind(this);
 	this.sendMessage = this.sendMessage.bind(this);
 	this.formatDate = this.formatDate.bind(this);
+	this.scrollToBottom = this.scrollToBottom.bind(this);
+
+	this.state = {
+	    message: '',
+	    onlineUsers: this.getOnlineUsers(),
+	};
+    }
+
+    scrollToBottom() {
+	this.messagesEnd.scrollIntoView({block: "end"});
+    }
+
+    getOnlineUsers() {
+	var onlineUsers = new Array();
+	this.props.room.users.forEach((user, index) => {
+	    if (user.online) {
+		onlineUsers.push(user.username);
+	    }
+	});
+	return onlineUsers;
+    }
+
+    componentDidMount() {
+	this.scrollToBottom();
+    }
+
+    componentDidUpdate() {
+	this.scrollToBottom();
     }
 
     formatDate(date) {
 	date = new Date(date);
-	const daysDiff = Math.floor((new Date() - date)/(1000*60*60*24));
-	if (daysDiff == 0) {
-	    return date.toLocaleString('default', {
-		"hour": "2-digit",
-		"minute": "2-digit",
-		"hourCycle": "h24",
-	    });
-	} else {
-	    return date.toLocaleString('default', {
-		"hour": "2-digit",
-		"minute": "2-digit",
-		"hourCycle": "h24",
-		"day": "numeric",
-		"month": "long",
-	    });
-	}
+	return date.toLocaleString('default', {
+	    "hour": "2-digit",
+	    "minute": "2-digit",
+	    "hourCycle": "h24",
+	});
+    }
+
+    getDay(date) {
+	date = new Date(date);
+	return date.toLocaleString('default', {
+	    "month": "long",
+	    "day": "numeric",
+	    "year": "numeric",
+	});
     }
     
     sendMessage(event) {
@@ -38,20 +62,31 @@ class Messages extends Component {
 	} else {
 	    console.log("enter a message while in a room");
 	}
+	this.setState({message: ""});
 	return false;
     }
 
     render() {
 	return (
 	    <div id="messages">
-		<h3 id="chat-header">Currently in chat: {this.props.roomName}</h3>
+		<h3 id="chat-header">Currently in chat: {this.props.room.name}</h3>
+		<h3>{this.state.onlineUsers.join(",")}</h3>
 
 		<div className="messagearea" id="chatmessages">
-		    {this.props.messages.map((message, index) => (
-			<p key={index}>
-			    {this.formatDate(message.sent)} {message.from}: {message.message}
-			</p>
-		    ))}
+		    {this.props.messages.map((message, index, array) => {
+			let day = this.getDay(message.sent);
+			let show = (index == 0 || day != this.getDay(array[index-1].sent));
+			return (
+			<div key={index}>
+			    <p className="date-separator">
+				{show && this.getDay(message.sent)}
+			    </p>
+			    <p className="message">
+				{this.formatDate(message.sent)} {message.from}: {message.message}
+			    </p>
+			</div>
+		    );})}
+		    <div ref={(el) => {this.messagesEnd = el;}}></div>
 		</div>
 
 		<br />

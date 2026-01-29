@@ -15,12 +15,10 @@ class RoomList extends Component {
 		<div id="chatroom-selection">
 		{[...this.props.rooms.values()].map((room) => (
 		    <Room key={room.id} 
-			roomId={room.id}
-			roomName={room.name}
-			lastMessage={room.last_message}
+			room={room}
 			changeRoom={this.props.changeRoom}
-		    />
-		))}
+		    />)
+		)}
 		</div>
 	    </div>
 	);

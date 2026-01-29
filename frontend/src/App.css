@@ -1,6 +1,14 @@
 .App {
   --header-height: 50px;
-  text-align: center;
+}
+
+.main {
+  margin-top: var(--header-height);  
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-content: center;
 }
 
 #sidebar {

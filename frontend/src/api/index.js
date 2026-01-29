@@ -2,17 +2,17 @@ import { Event,
     SendMessageEvent, 
     NewMessageEvent, 
     NewRoomEvent, 
-    CreateRoomEvent  
+    CreateRoomEvent,
+    UserConnectedEvent,
+    UserDisconnectedEvent
 } from './events.js';
 
-// const API_DOMAIN = import.meta.env.VITE_API_DOMAIN
-const API_DOMAIN="localhost:8080";
+const API_DOMAIN = import.meta.env.VITE_API_DOMAIN
 
 var conn = null;
 
 function sendEvent(eventName, payload) {
     const event = new Event(eventName, payload);
-    console.log(event);
     if (conn != null) {
 	conn.send(JSON.stringify(event));
     } else {
@@ -23,6 +23,7 @@ function sendEvent(eventName, payload) {
 function connectWebsocket(token, username, callback) {
     if (window["WebSocket"]) {
 	if (conn != null) {
+	    sendEvent("client_disconnected", {});
 	    sendEvent("disconnect", {})
 	}
 
@@ -32,10 +33,12 @@ function connectWebsocket(token, username, callback) {
 	// Onopen
 	conn.onopen = function (evt) {
 	    console.log("Successfully connected");
+	    sendEvent("client_connected", {});
 	    sendEvent("get_rooms", {});
 	}
 
 	conn.onclose = function (evt) {
+	    sendEvent("client_disconnected", {});
 	    console.log("Socket closed connection", event);
 	}
 
@@ -64,4 +67,6 @@ export {
     NewMessageEvent, 
     NewRoomEvent, 
     CreateRoomEvent,
+    UserConnectedEvent,
+    UserDisconnectedEvent,
 };

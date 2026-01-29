@@ -97,6 +97,8 @@ func (h *Hub) setupEventHandlers() {
 	h.handlers[EventGetMessages] = GetMessagesHandler
 	h.handlers[EventGetRooms] = GetRoomsHandler
 	h.handlers[EventCreateRoom] = CreateRoomHandler
+	h.handlers[EventClientConnected] = ClientConnectedHandler
+	h.handlers[EventClientDisconnected] = ClientDisconnectedHandler
 }
 
 // makes sure the events are handlers are correctly associated
@@ -132,7 +134,7 @@ func (h *Hub) signupHandler(w http.ResponseWriter, r *http.Request) {
 
 	bytes, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost) 
 
-	h.db.addUser(newUser(req.Username, string(bytes))) 
+	h.db.addUser(newUser(req.Username), string(bytes))
 
 	type response struct {
 		Token string `json:"token"`
@@ -173,7 +175,7 @@ func (h *Hub) loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// authenticate user
-	if user, err := h.db.getUserByUsername(req.Username); err == nil && bcrypt.CompareHashAndPassword([]byte(user.password), []byte(req.Password)) == nil {
+	if password, err := h.db.getPasswordHashByUsername(req.Username); err == nil && bcrypt.CompareHashAndPassword([]byte(password), []byte(req.Password)) == nil {
 		type response struct {
 			Token string `json:"token"`
 		}
@@ -251,12 +253,16 @@ func (h *Hub) addClient(client *Client) {
 	if _, ok := h.clients[client.user.username]; !ok {
 		h.clients[client.user.username] = make(map[*Client]bool)
 	}
+	client.user.online = true
 	h.clients[client.user.username][client] = true
 }
 
 // remove client from clients list and end connection
 func (h *Hub) removeClient(client *Client) {
 	if _, ok := h.clients[client.user.username][client]; ok {
+		if len(h.clients[client.user.username]) == 1 {
+			client.user.online = false;
+		}
 		client.conn.Close()
 		delete(h.clients[client.user.username], client)
 	}

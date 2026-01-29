@@ -25,7 +25,6 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// create cors object
 	c := cors.New(cors.Options{
 		AllowedOrigins: []string{os.Getenv("ALLOWED_ORIGIN")},
 		AllowedMethods: []string{"GET", "POST", "OPTIONS", "PUT", "DELETE"},
@@ -42,7 +41,7 @@ func main() {
 	setupAPI(ctx, mux)
 
 	// serve on designated addr
-	err = http.ListenAndServeTLS(*addr, "localhost+1.pem", "localhost+1-key.pem", c.Handler(mux))
+	err = http.ListenAndServeTLS(*addr, "localhost+2.pem", "localhost+2-key.pem", c.Handler(mux))
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}

@@ -4,21 +4,20 @@ import './Room.scss';
 class Room extends Component {
     constructor(props) {
 	super(props);
-	this.roomId = this.props.roomId;
-	this.roomName = this.props.roomName;
-	this.lastMessage = this.props.lastMessage;
 	this.changeRoom = this.changeRoom.bind(this);
 	this.formatDate = this.formatDate.bind(this);
     }
 
     changeRoom() {
-	this.props.changeRoom(this.roomId);
+	this.props.changeRoom(this.props.room.id);
     }
 
     formatDate(date) {
 	date = new Date(date);
-	const daysDiff = Math.floor((new Date() - date)/(1000*60*60*24));
-	if (daysDiff == 0) {
+	let today = new Date();
+	today.setHours(0,0,0,0);
+	const daysDiff = Math.ceil((today - date)/(1000*60*60*24));
+	if (daysDiff <= 0) {
 	    return date.toLocaleString('default', {
 		"hour": "2-digit",
 		"minute": "2-digit",
@@ -36,12 +35,12 @@ class Room extends Component {
 
     render() {
 	return (
-	    <div className="room" id={'room' + this.roomId} onClick={this.changeRoom}>
-		<p className="room-name">{this.roomName}</p>
+	    <div className="room" id={'room' + this.props.room.id} onClick={this.changeRoom}>
+		<p className="room-name">{this.props.room.name}</p>
 		<div className="last-message">
-		    <p className="last-message-author">{this.lastMessage && this.lastMessage.from}: </p>
-		    <p className="last-message-message">{this.lastMessage && this.lastMessage.message}</p>
-		    <p className="last-message-date">{this.lastMessage && this.formatDate(this.lastMessage.sent)}</p>
+		    <p className="last-message-author">{this.props.room.last_message.from && this.props.room.last_message.from + ": "}</p>
+		    <p className="last-message-message">{this.props.room.last_message.message && this.props.room.last_message.message}</p>
+		    <p className="last-message-date">{this.props.room.last_message.sent && this.formatDate(this.props.room.last_message.sent)}</p>
 		</div>
 	    </div>
 	);

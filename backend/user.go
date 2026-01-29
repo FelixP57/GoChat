@@ -4,14 +4,13 @@ package main
 type User struct {
 	username string
 
-	password string
-
+	online bool
 }
 
-func newUser(username string, password string) *User {
+func newUser(username string) *User {
 	return &User{
 		username: username,
-		password: password,
+		online: false,
 	}
 }
 

@@ -44,26 +44,40 @@ func getDb(hub *Hub) *Database {
 	return &Database{db: db, hub: hub}
 }
 
-func (db *Database) addUser(user *User) {
+func (db *Database) addUser(user *User, password string) {
 	sqlStatement := `INSERT INTO users (username, password) VALUES ($1, $2);`
-	_, err := db.db.Exec(sqlStatement, user.username, user.password)
+	_, err := db.db.Exec(sqlStatement, user.username, password)
 	if err != nil {
 		panic(err)
 	}
 }
 
 func (db *Database) getUserByUsername(username string) (*User, error) {
-	sqlStatement := `SELECT * FROM users WHERE username=$1;`
+	sqlStatement := `SELECT username FROM users WHERE username=$1;`
 	var name string
-	var password string
 	row := db.db.QueryRow(sqlStatement, username)
-	err := row.Scan(&name, &password)
-	user := newUser(name, password)
+	err := row.Scan(&name)
+	user := newUser(name)
 	switch err {
 	case sql.ErrNoRows:
 		return nil, err
 	case nil:
 		return user, nil
+	default:
+		panic(err)
+	}
+}
+
+func (db *Database) getPasswordHashByUsername(username string) (string, error) {
+	sqlStatement := `SELECT password FROM users WHERE username=$1;`
+	var password string
+	row := db.db.QueryRow(sqlStatement, username)
+	err := row.Scan(&password)
+	switch err {
+	case sql.ErrNoRows:
+		return "", err
+	case nil:
+		return password, nil
 	default:
 		panic(err)
 	}

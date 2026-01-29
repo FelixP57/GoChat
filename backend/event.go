@@ -13,6 +13,13 @@ type Event struct {
 	Payload json.RawMessage `json:"payload"`
 }
 
+// A User in a Room
+type RoomUser struct {
+	Username string `json:"username"`
+	Online   bool   `json:"online"`
+	Typing   bool	`json:"typing"`
+}
+
 // func signatureto affect messages on the socket based on type
 type EventHandler func(event Event, c *Client) error
 
@@ -31,6 +38,14 @@ const (
 	EventNewRoom = "new_room"
 	// create room
 	EventCreateRoom = "create_room"
+	// client connection
+	EventClientConnected = "client_connected"
+	// client disconnection
+	EventClientDisconnected = "client_disconnected"
+	// user connection
+	EventUserConnected = "user_connected"
+	// user disconnection
+	EventUserDisconnected = "user_disconnected"
 )
 
 type SendMessageEvent struct {
@@ -49,6 +64,7 @@ type NewMessageEvent struct {
 type NewRoomEvent struct {
 	Id int `json:"id"`
 	Name string `json:"name"`
+	Users []RoomUser `json:"users"`
 	LastMessage NewMessageEvent `json:"last_message"`
 }
 
@@ -60,6 +76,14 @@ type GetMessagesEvent struct {
 	RoomId int `json:"room_id"`
 }
 
+type UserConnectedEvent struct {
+	Username string `json:"username"`
+}
+
+type UserDisconnectedEvent struct {
+	Username string `json:"username"`
+}
+
 func SendMessageHandler(event Event, c *Client) error {
 	var chatevent SendMessageEvent
 	if err := json.Unmarshal(event.Payload, &chatevent); err != nil {
@@ -68,8 +92,6 @@ func SendMessageHandler(event Event, c *Client) error {
 
 	var broadMessage NewMessageEvent
 
-	fmt.Println(chatevent.Message)
-	fmt.Println(chatevent.RoomId)
 	broadMessage.Sent = time.Now()
 	broadMessage.Message = chatevent.Message
 	broadMessage.From = c.user.username
@@ -100,6 +122,9 @@ func SendMessageHandler(event Event, c *Client) error {
 
 func DisconnectClientHandler(event Event, c *Client) error {
 	c.hub.removeClient(c)
+	if c.user.online == false {
+		// broadcast change
+	}
 	return nil
 }
 
@@ -130,18 +155,21 @@ func GetRoomsHandler(event Event, c *Client) error {
 	for i := range roomIds {
 		room := c.hub.rooms[roomIds[i]]
 		roomName := room.name
+		var roomUsers []RoomUser
 		if roomName == "" {
 			users := c.hub.rooms[roomIds[i]].users
 			for username := range users {
 				if (username != c.user.username) {
+					user := RoomUser{Username: username, Online: len(c.hub.clients[username]) > 1, Typing: false}
 					roomName += username
 					roomName += ", ";
+					roomUsers = append(roomUsers, user)
 				}
 			}
 			roomName = roomName[:len(roomName) - 2];
 		}
 		lastMessage := c.hub.db.getLastRoomMessage(roomIds[i])
-		event := NewRoomEvent{Id: roomIds[i], Name: roomName, LastMessage: lastMessage}
+		event := NewRoomEvent{Id: roomIds[i], Name: roomName, Users: roomUsers, LastMessage: lastMessage}
 		data, err := json.Marshal(event)
 		if err != nil {
 			return fmt.Errorf("failed to marshal broadcast message: %v", err)
@@ -185,10 +213,19 @@ func CreateRoomHandler(event Event, c *Client) error {
 		c.hub.db.addUserToRoom(c.user.username, id)
 		c.hub.db.addUserToRoom(user.username, id)
 		c.hub.rooms[id] = room
-		roomEvent = NewRoomEvent{Id: id, Name: user.username, LastMessage: NewMessageEvent{}}
+		var roomUsers []RoomUser
+		roomUser := RoomUser{Username: user.username, Online: false, Typing: false}
+		roomUsers = append(roomUsers, roomUser)
+		roomEvent = NewRoomEvent{Id: id, Name: user.username, Users: roomUsers, LastMessage: NewMessageEvent{}}
 	} else {
 		room = c.hub.rooms[id]
-		roomEvent = NewRoomEvent{Id: id, Name: user.username, LastMessage: room.lastMessage}
+		var roomUsers []RoomUser
+		var roomUser RoomUser
+		for user := range room.users {
+			roomUser = RoomUser{Username: user, Online: len(c.hub.clients[user]) > 0, Typing: false}
+			roomUsers = append(roomUsers, roomUser)
+		}
+		roomEvent = NewRoomEvent{Id: id, Name: user.username, Users: roomUsers, LastMessage: room.lastMessage}
 	}	
 
 	// broadcast NewRoomEvent
@@ -205,3 +242,44 @@ func CreateRoomHandler(event Event, c *Client) error {
 	return nil
 }
 
+func ClientConnectedHandler(event Event, c *Client) error {
+	var broadcastEvent UserConnectedEvent
+	broadcastEvent.Username = c.user.username
+
+	data, err := json.Marshal(broadcastEvent)
+	if err != nil {
+		return fmt.Errorf("failed to marshal broadcast message: %v", err)
+	}
+
+	var outgoingEvent Event
+	outgoingEvent.Payload = data
+	outgoingEvent.Type = EventUserConnected
+
+	roomIds := c.hub.db.getRooms(c.user.username)
+	for i := range roomIds {
+		room := c.hub.rooms[roomIds[i]]
+		room.broadcast <- outgoingEvent
+	}
+	return nil
+}
+
+func ClientDisconnectedHandler(event Event, c *Client) error {
+	var broadcastEvent UserDisconnectedEvent
+	broadcastEvent.Username = c.user.username
+
+	data, err := json.Marshal(broadcastEvent)
+	if err != nil {
+		return fmt.Errorf("failed to marshal broadcast message: %v", err)
+	}
+
+	var outgoingEvent Event
+	outgoingEvent.Payload = data
+	outgoingEvent.Type = EventUserDisconnected
+
+	roomIds := c.hub.db.getRooms(c.user.username)
+	for i := range roomIds {
+		room := c.hub.rooms[roomIds[i]]
+		room.broadcast <- outgoingEvent
+	}
+	return nil
+}
