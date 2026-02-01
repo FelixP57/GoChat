@@ -75,6 +75,17 @@ func (c *Client) readMessages() {
 		// route Event
 		if err := c.hub.routeEvent(request, c); err != nil {
 			log.Println("error handling message: ", err)
+
+			errorEvent := Event{
+				Type: "error",
+				Payload: json.RawMessage(`"` + err.Error() + `"`),
+			}
+
+			select {
+			case c.send <- errorEvent:
+			default:
+				log.Println("Client buffer full, dropping error message")
+			}
 		}
 	}
 }

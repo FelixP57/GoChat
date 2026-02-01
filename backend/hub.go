@@ -64,7 +64,7 @@ type Hub struct {
 	db *Database
 }
 
-func newHub(ctx context.Context) *Hub {
+func newHub(ctx context.Context) (*Hub, error) {
 	h := &Hub{
 		clients: 	make(map[string]map[*Client]bool),
 		rooms:		make(map[int]*Room),
@@ -72,22 +72,30 @@ func newHub(ctx context.Context) *Hub {
 		unregister:	make(chan *Client),
 		handlers: 	make(map[string]EventHandler),
 	}
-	h.db = getDb(h)
+	db, err := getDb(h)
+	if err != nil {
+		return nil, err
+	}
+	h.db = db
 	h.setupEventHandlers()
-	h.loadRooms()
+	err = h.loadRooms()
+	if err != nil {
+		return nil, err
+	}
 
-	return h
+	return h, nil
 }
 
-func (h *Hub) loadRooms() {
+func (h *Hub) loadRooms() error {
 	rooms, err := h.db.getRoomObjects()
 	if err != nil {
-		log.Println(err)
+		return err
 	}
 	h.rooms = rooms
 	for i := range rooms {
 		go rooms[i].run()
 	}
+	return nil
 }
 
 // configures and adds all handlers
@@ -134,7 +142,11 @@ func (h *Hub) signupHandler(w http.ResponseWriter, r *http.Request) {
 
 	bytes, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost) 
 
-	h.db.addUser(newUser(req.Username), string(bytes))
+	err = h.db.addUser(newUser(req.Username), string(bytes))
+	if err != nil {
+		http.Error(w, "Error creating user", http.StatusInternalServerError)
+		return
+	}
 
 	type response struct {
 		Token string `json:"token"`
@@ -142,7 +154,7 @@ func (h *Hub) signupHandler(w http.ResponseWriter, r *http.Request) {
 
 	token, err := generateJWT(req.Username)
 	if err != nil {
-		log.Println(err)
+		log.Println("Error generating JWT token: ", err)
 		return
 	}
 
@@ -152,7 +164,7 @@ func (h *Hub) signupHandler(w http.ResponseWriter, r *http.Request) {
 
 	data, err := json.Marshal(resp)
 	if err != nil {
-		log.Println(err)
+		log.Println("Error marshalling message: ", err)
 		return
 	}
 
@@ -182,7 +194,7 @@ func (h *Hub) loginHandler(w http.ResponseWriter, r *http.Request) {
 
 		token, err := generateJWT(req.Username)
 		if err != nil {
-			log.Println(err)
+			log.Println("JWT token generation error: ", err)
 			return
 		}
 
@@ -192,7 +204,7 @@ func (h *Hub) loginHandler(w http.ResponseWriter, r *http.Request) {
 
 		data, err := json.Marshal(resp)
 		if err != nil {
-			log.Println(err)
+			log.Println("Error marshalling message: ", err)
 			return
 		}
 
@@ -216,27 +228,29 @@ func (h *Hub) serveWs(w http.ResponseWriter, r *http.Request) {
 	
 	claims, err := verifyJWT(token)
 	if err != nil {
-		log.Println(err)
+		log.Println("Error verificating JWT token: ", err)
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
 	username, err := claims.GetSubject()
 	if err != nil {
-		log.Println(err)
+		log.Println("Error during JWT token analysis: ", err)
 		return
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println(err)
+		log.Println("Error during connection promotion: ", err)
 		return
 	}
 
 	
 	user, err := h.db.getUserByUsername(username)
 	if err != nil  {
-		log.Println(err)
+		log.Println("User not found: ", err)
+		http.Error(w, "Credentials verification error", http.StatusInternalServerError)
+		return
 	}
 	client := newClient(h, conn, user)
 	h.register <- client

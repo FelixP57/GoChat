@@ -78,6 +78,9 @@ class App extends Component {
 		    }));
 		}
 		break;
+	    case "error":
+		alert("Error: " + event.payload);
+		break;
 
 	    default:
 		alert("unsupported message type");

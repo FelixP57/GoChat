@@ -2,9 +2,9 @@ package main
 
 import (
 	"database/sql"
-	"errors"
 	"os"
 	"fmt"
+	"errors"
 
 	_ "github.com/lib/pq"
 )
@@ -18,6 +18,7 @@ const (
 
 var (
 	RoomNotFoundError = errors.New("Room not found")
+	UserNotFoundError = errors.New("User not found")
 )
 
 type Database struct {
@@ -29,27 +30,25 @@ func (db *Database) closeDb() {
 	db.db.Close()
 }
 
-func getDb(hub *Hub) *Database {
+func getDb(hub *Hub) (*Database, error) {
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", host, port, user, os.Getenv("PSQL_PWD"), dbname)
 	db, err := sql.Open("postgres", psqlInfo)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	err = db.Ping()
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	return &Database{db: db, hub: hub}
+	return &Database{db: db, hub: hub}, nil
 }
 
-func (db *Database) addUser(user *User, password string) {
+func (db *Database) addUser(user *User, password string) error {
 	sqlStatement := `INSERT INTO users (username, password) VALUES ($1, $2);`
 	_, err := db.db.Exec(sqlStatement, user.username, password)
-	if err != nil {
-		panic(err)
-	}
+	return err
 }
 
 func (db *Database) getUserByUsername(username string) (*User, error) {
@@ -60,11 +59,11 @@ func (db *Database) getUserByUsername(username string) (*User, error) {
 	user := newUser(name)
 	switch err {
 	case sql.ErrNoRows:
-		return nil, err
+		return nil, UserNotFoundError
 	case nil:
 		return user, nil
 	default:
-		panic(err)
+		return nil, err
 	}
 }
 
@@ -75,31 +74,29 @@ func (db *Database) getPasswordHashByUsername(username string) (string, error) {
 	err := row.Scan(&password)
 	switch err {
 	case sql.ErrNoRows:
-		return "", err
+		return "", UserNotFoundError
 	case nil:
 		return password, nil
 	default:
-		panic(err)
+		return "", err
 	}
 }
 
-func (db *Database) updateUserRoom(user *User, roomId int) {
+func (db *Database) updateUserRoom(user *User, roomId int) error {
 	sqlStatement := `UPDATE users SET room_id=$1 WHERE username=$2;`
 	_, err := db.db.Exec(sqlStatement, roomId, user.username);
-	if err != nil {
-		panic(err)
-	}
+	return err
 }
 
-func (db *Database) addRoom(room *Room) int {
+func (db *Database) addRoom(room *Room) (int, error) {
 	sqlStatement := `INSERT INTO rooms (capacity, name) VALUES ($1, $2) RETURNING Id;`
 	var id int
 	row := db.db.QueryRow(sqlStatement, room.capacity, room.name)
 	err := row.Scan(&id)
 	if err != nil {
-		panic(err)
+		return -1, err
 	}
-	return id
+	return id, nil
 }
 
 func (db *Database) getRoomObjects() (map[int]*Room, error) {
@@ -117,91 +114,89 @@ func (db *Database) getRoomObjects() (map[int]*Room, error) {
 		if err != nil {
 			return nil, err	
 		}
-		room.users = db.getRoomUsers(id)
+		roomUsers, err := db.getRoomUsers(id)
+		if err != nil {
+			return nil, err
+		}
+		room.users = roomUsers
 		rooms[id] = room
 	}
 	return rooms, nil
 }
 
-func (db *Database) getRooms(username string) []int {
+func (db *Database) getRooms(username string) ([]int, error) {
 	sqlStatement := `SELECT rooms.id FROM rooms, room_users WHERE rooms.id=room_users.room_id AND room_users.username=$1;`
 	var roomIds []int
 	rows, err := db.db.Query(sqlStatement, username)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var id int
 		err = rows.Scan(&id)
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 		roomIds = append(roomIds, id)
 	}
-	return roomIds
+	return roomIds, nil
 }
 
-func (db *Database) updateRoomName(roomId int, name string) {
+func (db *Database) updateRoomName(roomId int, name string) error {
 	sqlStatement := `UPDATE rooms SET name=$1 WHERE id=$2;`
 	_, err := db.db.Exec(sqlStatement, name, roomId)
-	if err != nil {
-		panic(err)
-	}
+	return err
 }
 
-func (db *Database) addMessage(message NewMessageEvent, roomId int) {
+func (db *Database) addMessage(message NewMessageEvent, roomId int) error {
 	sqlStatement := `INSERT INTO messages (message, author, date_sent, room_id) VALUES ($1, $2, $3, $4);`
 	_, err := db.db.Exec(sqlStatement, message.Message, message.From, message.Sent, roomId)
-	if err != nil {
-		panic(err)
-	}
+	return err
 }
 
-func (db *Database) getMessages(roomId int) []NewMessageEvent {
+func (db *Database) getMessages(roomId int) ([]NewMessageEvent, error) {
 	sqlStatement := `SELECT * FROM messages WHERE room_id=$1;`
 	var events []NewMessageEvent
 	rows, err := db.db.Query(sqlStatement, roomId)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var event NewMessageEvent
 		err = rows.Scan(&event.Message, &event.From, &event.Sent, &event.RoomId)
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 		events = append(events, event)
 	}
-	return events
+	return events, nil
 }
 
-func (db *Database) getRoomUsers(roomId int) map[string]bool {
+func (db *Database) getRoomUsers(roomId int) (map[string]bool, error) {
 	sqlStatement := `SELECT username FROM room_users WHERE room_id=$1;`
 	users := make(map[string]bool) 
 	rows, err := db.db.Query(sqlStatement, roomId)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var username string
 		err = rows.Scan(&username)
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 		users[username] = true
 	}
-	return users
+	return users, nil
 }
 
-func (db *Database) addUserToRoom(username string, roomId int) {
+func (db *Database) addUserToRoom(username string, roomId int) error {
 	sqlStatement := `INSERT INTO room_users (room_id, username) VALUES ($1, $2);`
 	_, err := db.db.Exec(sqlStatement, roomId, username)
-	if err != nil {
-		panic(err)
-	}
+	return err
 }
 
 func (db *Database) getRoomByUsers(username1 string, username2 string) (int, error) {

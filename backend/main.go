@@ -21,6 +21,7 @@ func main() {
 	err := godotenv.Load("../.env.development")
 	if err != nil {
 		log.Fatal("Error loading .env file")
+		return
 	}
 
 	mux := http.NewServeMux()
@@ -38,19 +39,27 @@ func main() {
 
 	defer cancel()
 
-	setupAPI(ctx, mux)
+	err = setupAPI(ctx, mux)
+	if err != nil {
+		log.Fatal("Error setting up the API: ", err)
+		return
+	}
 
 	// serve on designated addr
 	err = http.ListenAndServeTLS(*addr, "localhost+2.pem", "localhost+2-key.pem", c.Handler(mux))
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
+		return
 	}
 }
 
 // start all routes and associated handlers
-func setupAPI(ctx context.Context, mux *http.ServeMux){
+func setupAPI(ctx context.Context, mux *http.ServeMux) error {
 	// hub to handle websocket connections
-	hub := newHub(ctx)
+	hub, err := newHub(ctx)
+	if err != nil {
+		return err
+	}
 	go hub.run()
 
 
@@ -70,5 +79,7 @@ func setupAPI(ctx context.Context, mux *http.ServeMux){
 		fmt.Fprint(w, len(hub.clients))
 	})
 	// http.Handle("/frontend/", http.StripPrefix("/frontend", fs))
+
+	return nil
 }
 

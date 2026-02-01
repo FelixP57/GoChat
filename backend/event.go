@@ -102,7 +102,10 @@ func SendMessageHandler(event Event, c *Client) error {
 		return fmt.Errorf("failed to marshal broadcast message: %v", err)
 	}
 
-	c.hub.db.addMessage(broadMessage, chatevent.RoomId)
+	err = c.hub.db.addMessage(broadMessage, chatevent.RoomId)
+	if err != nil {
+		return err
+	}
 
 	// place payload in an event
 	var outgoingEvent Event
@@ -133,7 +136,10 @@ func GetMessagesHandler(event Event, c *Client) error {
 	if err := json.Unmarshal(event.Payload, &e); err != nil {
 		return fmt.Errorf("bad payload in request: %v", err)
 	}
-	events := c.hub.db.getMessages(e.RoomId)
+	events, err := c.hub.db.getMessages(e.RoomId)
+	if err != nil {
+		return err
+	}
 	for i := range events {
 		data, err := json.Marshal(events[i])
 		if err != nil {
@@ -151,7 +157,10 @@ func GetMessagesHandler(event Event, c *Client) error {
 }
 
 func GetRoomsHandler(event Event, c *Client) error {
-	roomIds := c.hub.db.getRooms(c.user.username)
+	roomIds, err := c.hub.db.getRooms(c.user.username)
+	if err != nil {
+		return err
+	}
 	for i := range roomIds {
 		room := c.hub.rooms[roomIds[i]]
 		roomName := room.name
@@ -192,7 +201,7 @@ func CreateRoomHandler(event Event, c *Client) error {
 	// check if other user exists
 	user, err := c.hub.db.getUserByUsername(createRoom.Username)
 	if err != nil {
-		fmt.Errorf("user not found: %v", err)
+		return err
 	}
 	
 	// check if room already exists
@@ -206,12 +215,21 @@ func CreateRoomHandler(event Event, c *Client) error {
 		// create room
 		room = newRoom(c.hub)
 		go room.run()
-		id := c.hub.db.addRoom(room)
+		id, err = c.hub.db.addRoom(room)
+		if err != nil {
+			return err
+		}
 		
 		room.register <- c.user
 		room.register <- user
-		c.hub.db.addUserToRoom(c.user.username, id)
-		c.hub.db.addUserToRoom(user.username, id)
+		err := c.hub.db.addUserToRoom(c.user.username, id)
+		if err != nil {
+			return err
+		}
+		err = c.hub.db.addUserToRoom(user.username, id)
+		if err != nil {
+			return err
+		}
 		c.hub.rooms[id] = room
 		var roomUsers []RoomUser
 		roomUser := RoomUser{Username: user.username, Online: false, Typing: false}
@@ -255,7 +273,10 @@ func ClientConnectedHandler(event Event, c *Client) error {
 	outgoingEvent.Payload = data
 	outgoingEvent.Type = EventUserConnected
 
-	roomIds := c.hub.db.getRooms(c.user.username)
+	roomIds, err := c.hub.db.getRooms(c.user.username)
+	if err != nil {
+		return err
+	}
 	for i := range roomIds {
 		room := c.hub.rooms[roomIds[i]]
 		room.broadcast <- outgoingEvent
@@ -276,7 +297,10 @@ func ClientDisconnectedHandler(event Event, c *Client) error {
 	outgoingEvent.Payload = data
 	outgoingEvent.Type = EventUserDisconnected
 
-	roomIds := c.hub.db.getRooms(c.user.username)
+	roomIds, err := c.hub.db.getRooms(c.user.username)
+	if err != nil {
+		return err
+	}
 	for i := range roomIds {
 		room := c.hub.rooms[roomIds[i]]
 		room.broadcast <- outgoingEvent
