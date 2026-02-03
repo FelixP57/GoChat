@@ -35,9 +35,9 @@ func checkOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 
 	switch origin {
-	case "https://localhost:8080":
+	case "http://localhost:8080":
 		return true
-	case "https://localhost:5173":
+	case "http://localhost":
 		return true
 	default:
 		return false

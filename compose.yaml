@@ -1,0 +1,40 @@
+services:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${PSQL_PWD}
+      POSTGRES_DB: gochat_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  backend:
+    build: ./backend
+    restart: always
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+    environment:
+      DB_HOST: db
+      PSQL_PWD: ${PSQL_PWD}
+      JWT_KEY: ${JWT_KEY}
+      ALLOWED_ORIGIN: ${ALLOWED_ORIGIN}
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_DOMAIN: localhost:8080
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

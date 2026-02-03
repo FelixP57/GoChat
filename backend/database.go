@@ -10,7 +10,6 @@ import (
 )
 
 const (
-	host = "localhost"
 	port = 5432
 	user = "postgres"
 	dbname = "gochat_db"
@@ -31,7 +30,11 @@ func (db *Database) closeDb() {
 }
 
 func getDb(hub *Hub) (*Database, error) {
-	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", host, port, user, os.Getenv("PSQL_PWD"), dbname)
+	dbHost := os.Getenv("DB_HOST")
+	if dbHost == "" {
+		dbHost = "localhost"
+	}
+	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", dbHost, port, user, os.Getenv("PSQL_PWD"), dbname)
 	db, err := sql.Open("postgres", psqlInfo)
 	if err != nil {
 		return nil, err
@@ -156,7 +159,7 @@ func (db *Database) addMessage(message NewMessageEvent, roomId int) error {
 }
 
 func (db *Database) getMessages(roomId int) ([]NewMessageEvent, error) {
-	sqlStatement := `SELECT * FROM messages WHERE room_id=$1;`
+	sqlStatement := `SELECT message, author, date_sent, room_id FROM messages WHERE room_id=$1;`
 	var events []NewMessageEvent
 	rows, err := db.db.Query(sqlStatement, roomId)
 	if err != nil {
@@ -214,7 +217,7 @@ func (db *Database) getRoomByUsers(username1 string, username2 string) (int, err
 }
 
 func (db *Database) getLastRoomMessage(roomId int) NewMessageEvent {
-	sqlStatement := `SELECT * FROM messages WHERE room_id=$1 ORDER BY date_sent DESC LIMIT 1;`
+	sqlStatement := `SELECT message, author, date_sent, room_id FROM messages WHERE room_id=$1 ORDER BY date_sent DESC LIMIT 1;`
 	row := db.db.QueryRow(sqlStatement, roomId)
 	var message NewMessageEvent
 	err := row.Scan(&message.Message, &message.From, &message.Sent, &message.RoomId)

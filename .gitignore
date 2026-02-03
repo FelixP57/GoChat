@@ -1,8 +1,9 @@
-.git
-
-gencert.bash
-*.crt
-*.key
-*.env
+.env
+.env.development
 *.pem
-*.env.*
+*.key
+postgres_data/
+node_modules/
+dist/
+build/
+.git

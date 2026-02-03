@@ -153,7 +153,7 @@ class App extends Component {
 	    "password": document.getElementById("password").value
 	}
 	// Send the request
-	fetch(`https://${API_DOMAIN}/login`, {
+	fetch(`http://${API_DOMAIN}/login`, {
 	    method: 'post',
 	    body: JSON.stringify(formData),
 	    mode: 'cors',
@@ -183,7 +183,7 @@ class App extends Component {
 	    "password": document.getElementById("password").value
 	}
 	// Send the request
-	fetch(`https://${API_DOMAIN}/signup`, {
+	fetch(`http://${API_DOMAIN}/signup`, {
 	    method: 'post',
 	    body: JSON.stringify(formData),
 	    mode: 'cors',

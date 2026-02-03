@@ -28,7 +28,7 @@ function connectWebsocket(token, username, callback) {
 	}
 
 	console.log("Attempting connection...");
-	conn = new WebSocket("wss://" + API_DOMAIN + "/ws?token=" + token);
+	conn = new WebSocket("ws://" + API_DOMAIN + "/ws?token=" + token);
 
 	// Onopen
 	conn.onopen = function (evt) {

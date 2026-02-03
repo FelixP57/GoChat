@@ -12,16 +12,15 @@ import (
 	"github.com/rs/cors"
 )
 
-var addr = flag.String("addr", ":8080", "https service address")
+var addr = flag.String("addr", ":8080", "http service address")
 
 func main() {
 	// parse addr
 	flag.Parse()
 
-	err := godotenv.Load("../.env.development")
+	err := godotenv.Load("../.env")
 	if err != nil {
-		log.Fatal("Error loading .env file")
-		return
+		log.Println("No .env file found, relying on system environment variables")
 	}
 
 	mux := http.NewServeMux()
@@ -46,7 +45,8 @@ func main() {
 	}
 
 	// serve on designated addr
-	err = http.ListenAndServeTLS(*addr, "localhost+2.pem", "localhost+2-key.pem", c.Handler(mux))
+	// err = http.ListenAndServeTLS(*addr, "localhost+2.pem", "localhost+2-key.pem", c.Handler(mux))
+	err = http.ListenAndServe(*addr, c.Handler(mux))
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 		return
