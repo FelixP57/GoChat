@@ -15,7 +15,7 @@ The project is fully containerized. You only need **Docker** and **Docker Compos
 
 1.  **Clone the repository :**
     ```bash
-    git clone https://github.com/felixp57/gochat
+    git clone https://github.com/felixp57/gochat.git
     cd gochat
     ```
 
